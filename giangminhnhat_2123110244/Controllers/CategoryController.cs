@@ -1,6 +1,8 @@
-﻿using Microsoft.AspNetCore.Mvc;
+﻿using EBikeAPI.Data;
+using EBikeAPI.Models;
 
-// For more information on enabling Web API for empty projects, visit https://go.microsoft.com/fwlink/?LinkID=397860
+using Microsoft.AspNetCore.Mvc;
+using Microsoft.EntityFrameworkCore;
 
 namespace giangminhnhat_2123110244.Controllers
 {
@@ -8,36 +10,78 @@ namespace giangminhnhat_2123110244.Controllers
     [ApiController]
     public class CategoryController : ControllerBase
     {
-        // GET: api/<CategoryController>
+        private readonly AppDbContext _context;
+
+        public CategoryController(AppDbContext context)
+        {
+            _context = context;
+        }
+
+        // 1. LAY DANH SACH (GET: api/Category)
         [HttpGet]
-        public IEnumerable<string> Get()
+        public async Task<ActionResult<IEnumerable<Category>>> GetCategories()
         {
-            return new string[] { "value1", "value2" };
+            return await _context.Categories.ToListAsync();
         }
 
-        // GET api/<CategoryController>/5
+        // 2. LAY CHI TIET (GET: api/Category/5)
         [HttpGet("{id}")]
-        public string Get(int id)
+        public async Task<ActionResult<Category>> GetCategory(int id)
         {
-            return "value";
+            var category = await _context.Categories.FindAsync(id);
+            if (category == null) return NotFound();
+            return category;
         }
 
-        // POST api/<CategoryController>
+        // 3. THEM MOI (POST: api/Category)
         [HttpPost]
-        public void Post([FromBody] string value)
+        public async Task<ActionResult<Category>> PostCategory(Category category)
         {
+            _context.Categories.Add(category);
+            await _context.SaveChangesAsync();
+            return CreatedAtAction(nameof(GetCategory), new { id = category.CategoryId }, category);
         }
 
-        // PUT api/<CategoryController>/5
+        // 4. CAP NHAT (PUT: api/Category/5)
         [HttpPut("{id}")]
-        public void Put(int id, [FromBody] string value)
+        public async Task<IActionResult> PutCategory(int id, Category category)
         {
+            if (id != category.CategoryId)
+            {
+                return BadRequest();
+            }
+
+            _context.Entry(category).State = EntityState.Modified;
+
+            try
+            {
+                await _context.SaveChangesAsync();
+            }
+            catch (DbUpdateConcurrencyException)
+            {
+                if (!CategoryExists(id)) return NotFound();
+                else throw;
+            }
+
+            return NoContent();
         }
 
-        // DELETE api/<CategoryController>/5
+        // 5. XOA (DELETE: api/Category/5)
         [HttpDelete("{id}")]
-        public void Delete(int id)
+        public async Task<IActionResult> DeleteCategory(int id)
         {
+            var category = await _context.Categories.FindAsync(id);
+            if (category == null) return NotFound();
+
+            _context.Categories.Remove(category);
+            await _context.SaveChangesAsync();
+
+            return Ok(new { message = "Xoa thanh cong!" });
+        }
+
+        private bool CategoryExists(int id)
+        {
+            return _context.Categories.Any(e => e.CategoryId == id);
         }
     }
 }

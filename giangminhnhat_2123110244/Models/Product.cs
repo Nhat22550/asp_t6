@@ -18,4 +18,5 @@ public class Product
 
     [StringLength(50)]
     public string Color { get; set; } = string.Empty;
+    public string? ImageUrl { get; set; }
 }

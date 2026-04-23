@@ -1,7 +1,10 @@
 ﻿using EBikeAPI.Data;
 using EBikeAPI.Models; 
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Http;
 using Microsoft.EntityFrameworkCore;
+using System.IO;
 
 namespace giangminhnhat_2123110244.Controllers
 {
@@ -10,10 +13,12 @@ namespace giangminhnhat_2123110244.Controllers
     public class ProductsController : ControllerBase
     {
         private readonly AppDbContext _context;
+        private readonly IWebHostEnvironment _env;
 
-        public ProductsController(AppDbContext context)
+        public ProductsController(AppDbContext context, IWebHostEnvironment env)
         {
             _context = context;
+            _env = env;
         }
 
         // 1. CREATE: Thêm mới 1 chiếc xe (POST)
@@ -53,7 +58,7 @@ namespace giangminhnhat_2123110244.Controllers
         {
             if (id != product.ProductId)
             {
-                return BadRequest("ID trên URL và ID trong thân Request không khớp nhau.");
+                return BadRequest("ID in URL and ID in request body do not match.");
             }
 
             _context.Entry(product).State = EntityState.Modified;
@@ -77,49 +82,77 @@ namespace giangminhnhat_2123110244.Controllers
             return NoContent();
         }
 
-        // 5. DELETE: Xóa 1 hoặc nhiều xe cùng lúc bằng chuỗi (DELETE)
-        // Cú pháp gọi API trên Swagger: /api/Products/1,2,3
-        [HttpDelete("{ids}")]
+        // 5a. DELETE: Xóa mot san pham theo ID
+        [HttpDelete("{id:int}")]
+        public async Task<IActionResult> DeleteProduct(int id)
+        {
+            var product = await _context.Products.FindAsync(id);
+            if (product == null)
+            {
+                return NotFound();
+            }
+
+            _context.Products.Remove(product);
+            await _context.SaveChangesAsync();
+
+            return NoContent();
+        }
+
+        // 5b. DELETE: Xoa nhieu san pham cung luc (duong dan: /api/Products/multiple/1,2,3)
+        [HttpDelete("multiple/{ids}")]
         public async Task<IActionResult> DeleteMultipleProducts(string ids)
         {
             if (string.IsNullOrWhiteSpace(ids))
             {
-                return BadRequest("Vui lòng cung cấp danh sách ID.");
+                return BadRequest("Vui long cung cap danh sach ID.");
             }
 
-            // Bước 1: Tách chuỗi "1,2,3" thành mảng số nguyên [1, 2, 3]
             var idList = ids.Split(',')
-                            .Select(id => id.Trim())
-                            .Where(id => int.TryParse(id, out _)) // Bỏ qua các ký tự không phải số
+                            .Select(i => i.Trim())
+                            .Where(i => int.TryParse(i, out _))
                             .Select(int.Parse)
                             .ToList();
 
-            if (!idList.Any())
-            {
-                return BadRequest("Không tìm thấy ID nào hợp lệ để xóa.");
-            }
+            if (!idList.Any()) return BadRequest("Khong co ID hop le.");
 
-            // Bước 2: Tìm tất cả các xe có ID nằm trong mảng vừa tách
             var productsToDelete = await _context.Products
                                                  .Where(p => idList.Contains(p.ProductId))
                                                  .ToListAsync();
 
-            if (!productsToDelete.Any())
-            {
-                return NotFound("Không tìm thấy sản phẩm nào khớp với các ID đã cung cấp.");
-            }
+            if (!productsToDelete.Any()) return NotFound("Khong tim thay san pham phu hop.");
 
-            // Bước 3: Dùng RemoveRange để xóa hàng loạt thay vì lặp vòng for (tối ưu hiệu năng)
             _context.Products.RemoveRange(productsToDelete);
             await _context.SaveChangesAsync();
 
-            return Ok(new { message = $"Đã xóa thành công {productsToDelete.Count} sản phẩm." });
+            return Ok(new { message = $"Da xoa thanh cong {productsToDelete.Count} san pham." });
         }
 
         // Hàm hỗ trợ kiểm tra xe có tồn tại không
         private bool ProductExists(int id)
         {
             return _context.Products.Any(e => e.ProductId == id);
+        }
+
+        // Upload image for product
+        [HttpPost("upload")]
+        public async Task<IActionResult> UploadImage(IFormFile file)
+        {
+            if (file == null || file.Length == 0) return BadRequest(new { message = "No file provided." });
+
+            var uploadsRoot = Path.Combine(_env.WebRootPath ?? "wwwroot", "uploads", "products");
+            if (!Directory.Exists(uploadsRoot)) Directory.CreateDirectory(uploadsRoot);
+
+            var ext = Path.GetExtension(file.FileName);
+            var fileName = Guid.NewGuid().ToString() + ext;
+            var filePath = Path.Combine(uploadsRoot, fileName);
+
+            using (var stream = new FileStream(filePath, FileMode.Create))
+            {
+                await file.CopyToAsync(stream);
+            }
+
+            var url = $"/uploads/products/{fileName}";
+            return Ok(new { imageUrl = url });
         }
     }
 }
